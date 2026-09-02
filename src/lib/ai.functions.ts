@@ -120,6 +120,12 @@ export const askEmployee = createServerFn({ method: "POST" })
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "z-ai/glm-5.2:free",
+        models: [
+          "z-ai/glm-5.2:free",
+          "google/gemini-2.0-flash-exp:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        route: "fallback",
         messages: [
           { role: "system", content: system },
           ...priorMessages,
@@ -254,6 +260,12 @@ export const runSkill = createServerFn({ method: "POST" })
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "z-ai/glm-5.2:free",
+        models: [
+          "z-ai/glm-5.2:free",
+          "google/gemini-2.0-flash-exp:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        route: "fallback",
         messages: [
           { role: "system", content: system },
           { role: "user", content: prompt },
