@@ -169,11 +169,12 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    line-height: 1.7;
     -webkit-font-smoothing: antialiased;
   }
 
   ::selection {
-    background: oklch(0.82 0.14 78 / 0.45);
+    background: oklch(0.7 0.125 79 / 0.4);
   }
 }
 
