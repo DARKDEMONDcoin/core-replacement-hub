@@ -239,7 +239,7 @@ export const runSkill = createServerFn({ method: "POST" })
 
     const requestSummary = Object.entries(data.values)
       .filter(([, v]) => v?.trim())
-      .map(([k, v]) => `${k}: ${v.length > 120 ? `${v.slice(0, 120)}…` : v}`)
+      .map(([k, v]) => `${k}: ${v['length'] > 120 ? `${v.slice(0, 120)}…` : v}`)
       .join(" · ");
 
     await supabase.from("messages").insert({
@@ -286,7 +286,7 @@ export const runSkill = createServerFn({ method: "POST" })
       .insert({
         workspace_id: data.workspaceId,
         employee_id: data.employeeId,
-        title: `${skill.title}${data.values.keyword ? ` — ${data.values.keyword}` : data.values.topic ? ` — ${data.values.topic}` : ""}`,
+        title: `${skill.title}${data.values['keyword'] ? ` — ${data.values['keyword']}` : data.values['topic'] ? ` — ${data.values['topic']}` : ""}`,
         detail: requestSummary.slice(0, 400),
         kind: skill.kind,
         channel: skill.channel,
