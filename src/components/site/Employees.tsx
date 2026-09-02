@@ -55,7 +55,7 @@ const employees: Employee[] = [
   },
   {
     id: "sam",
-    name: "سام",
+    name: "سالم",
     role: "مسؤول المبيعات",
     icon: Handshake,
     tint: "var(--amber)",
@@ -93,7 +93,7 @@ const employees: Employee[] = [
   },
   {
     id: "dana",
-    name: "دانا",
+    name: "دانة",
     role: "المصممة",
     icon: Palette,
     tint: "var(--jade-deep)",
