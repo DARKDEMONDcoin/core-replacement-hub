@@ -9,7 +9,9 @@ import { AppIcon, appLabel } from "@/components/site/AppIcon";
 import { getMember } from "@/data/team";
 import { starterPrompts, integrationStatusLabel } from "@/data/app";
 import { useIntegrations, useMessages, useWorkspace } from "@/lib/data";
-import { askEmployee } from "@/lib/ai.functions";
+import { askEmployee, runSkill } from "@/lib/ai.functions";
+import { SkillRunner } from "@/components/app/SkillRunner";
+import { skillsFor, type Skill } from "@/data/skills";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/chat/$id")({
@@ -65,6 +67,8 @@ function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const ask = useServerFn(askEmployee);
+  const runSkillFn = useServerFn(runSkill);
+  const employeeSkills = skillsFor(id);
 
   const owned = (integrations ?? []).filter((i) => i.employee_id === id);
 
@@ -79,13 +83,33 @@ function ChatPage() {
     onError: (e: unknown) => setError(e instanceof Error ? e.message : "تعذّر إرسال الطلب"),
   });
 
+  const skillRun = useMutation({
+    mutationFn: (p: { skill: Skill; values: Record<string, string> }) =>
+      runSkillFn({
+        data: {
+          workspaceId: workspace!.id,
+          employeeId: id,
+          skillId: p.skill.id,
+          values: p.values,
+        },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["messages", workspace?.id, id] });
+      void qc.invalidateQueries({ queryKey: ["messages-last", workspace?.id] });
+      void qc.invalidateQueries({ queryKey: ["tasks", workspace?.id] });
+    },
+    onError: (e: unknown) => setError(e instanceof Error ? e.message : "تعذّر تنفيذ المهمة"),
+  });
+
+  const busy = send.isPending || skillRun.isPending;
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages?.length, send.isPending]);
+  }, [messages?.length, send.isPending, skillRun.isPending]);
 
   const submit = (text: string) => {
     const body = text.trim();
-    if (!body || !workspace || send.isPending) return;
+    if (!body || !workspace || busy) return;
     setError(null);
     setDraft("");
     send.mutate(body);
@@ -159,7 +183,7 @@ function ChatPage() {
               </div>
             ))}
 
-            {send.isPending ? (
+            {busy ? (
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <span
                   className="grid size-9 shrink-0 place-items-center rounded-xl"
@@ -180,12 +204,21 @@ function ChatPage() {
           </div>
 
           <div className="sticky bottom-0 border-t border-border bg-background/90 p-5 backdrop-blur-xl">
+            <SkillRunner
+              skills={employeeSkills}
+              disabled={!workspace}
+              pending={busy}
+              onRun={(skill, values) => {
+                setError(null);
+                skillRun.mutate({ skill, values });
+              }}
+            />
             <div className="mb-3 flex flex-wrap gap-2">
               {(starterPrompts[id] ?? []).map((p) => (
                 <button
                   key={p}
                   onClick={() => submit(p)}
-                  disabled={send.isPending}
+                  disabled={busy}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold transition-colors hover:bg-secondary disabled:opacity-50"
                 >
                   <Sparkles className="size-3.5 text-jade" />
@@ -208,11 +241,11 @@ function ChatPage() {
               />
               <button
                 type="submit"
-                disabled={send.isPending || !workspace}
+                disabled={busy || !workspace}
                 className="grid size-10 shrink-0 place-items-center rounded-xl bg-foreground text-background disabled:opacity-50"
                 aria-label="إرسال"
               >
-                {send.isPending ? (
+                {busy ? (
                   <Loader2 className="size-4.5 animate-spin" />
                 ) : (
                   <Send className="size-4.5 -scale-x-100" />

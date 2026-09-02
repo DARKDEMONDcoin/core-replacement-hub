@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { getSkill } from "@/data/skills";
 
 const personas: Record<string, { name: string; role: string; channel: string; kind: string }> = {
   sonny: {
@@ -187,4 +188,120 @@ export const askEmployee = createServerFn({ method: "POST" })
     }
 
     return { reply, messageId: assistantRow.id, createdTaskId };
+  });
+
+const skillInput = z.object({
+  workspaceId: z.string().uuid(),
+  employeeId: z.string().min(1),
+  skillId: z.string().min(1),
+  values: z.record(z.string(), z.string()),
+});
+
+/** تشغيل قدرة محددة: يخرج مخرجاً جاهزاً ويحفظه كمهمة بانتظار الاعتماد. */
+export const runSkill = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => skillInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const apiKey = process.env["LOVABLE_API_KEY"];
+    if (!apiKey) throw new Error("مفتاح خدمة الذكاء الاصطناعي غير مهيأ.");
+
+    const persona = personas[data.employeeId];
+    const skill = getSkill(data.skillId);
+    if (!persona || !skill || skill.employeeId !== data.employeeId)
+      throw new Error("قدرة غير معروفة لهذا الموظف.");
+
+    const supabase = context.supabase;
+    const [{ data: workspace }, { data: brain }] = await Promise.all([
+      supabase.from("workspaces").select("*").eq("id", data.workspaceId).maybeSingle(),
+      supabase.from("brain_items").select("title, body, kind").eq("workspace_id", data.workspaceId),
+    ]);
+    if (!workspace) throw new Error("مساحة العمل غير موجودة.");
+
+    const brainText = (brain ?? [])
+      .map((b) => `- [${b.kind}] ${b.title}${b.body ? `: ${b.body}` : ""}`)
+      .join("\n");
+
+    const system = [
+      `أنت ${persona.name}، ${persona.role}`,
+      `تعمل داخل منصة «سهل» لصالح العلامة: ${workspace.name} (${workspace.industry}).`,
+      `نبرة العلامة: ${workspace.tone}.`,
+      workspace.banned_words?.length
+        ? `كلمات ممنوعة تماماً: ${workspace.banned_words.join("، ")}.`
+        : "",
+      brainText ? `معرفة العلامة:\n${brainText}` : "",
+      "أنت تنفّذ الآن مهمة محددة وتسلّم مخرجاً نهائياً جاهزاً للاستخدام — لا أسئلة ولا مقدمات ولا اعتذارات.",
+      "اكتب بالعربية الفصحى الواضحة، بصيغة Markdown منسّقة، والتزم حرفياً بالهيكل المطلوب.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const prompt = skill.buildPrompt(data.values);
+
+    const requestSummary = Object.entries(data.values)
+      .filter(([, v]) => v?.trim())
+      .map(([k, v]) => `${k}: ${v['length'] > 120 ? `${v.slice(0, 120)}…` : v}`)
+      .join(" · ");
+
+    await supabase.from("messages").insert({
+      workspace_id: data.workspaceId,
+      employee_id: data.employeeId,
+      role: "user",
+      body: `▸ ${skill.title}${requestSummary ? `\n${requestSummary}` : ""}`,
+    });
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+
+    if (res.status === 429) throw new Error("تجاوزت حد الاستخدام مؤقتاً — حاول بعد قليل.");
+    if (res.status === 402) throw new Error("رصيد الذكاء الاصطناعي غير كافٍ — أضف رصيداً للمتابعة.");
+    if (!res.ok) throw new Error(`تعذّر تنفيذ المهمة (${res.status}).`);
+
+    const payload = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const output = payload.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!output) throw new Error("لم يصل مخرج من الموظف — أعد المحاولة.");
+
+    const { data: assistantRow, error: assistantError } = await supabase
+      .from("messages")
+      .insert({
+        workspace_id: data.workspaceId,
+        employee_id: data.employeeId,
+        role: "assistant",
+        body: output,
+      })
+      .select()
+      .single();
+    if (assistantError) throw new Error(assistantError.message);
+
+    const { data: task } = await supabase
+      .from("tasks")
+      .insert({
+        workspace_id: data.workspaceId,
+        employee_id: data.employeeId,
+        title: `${skill.title}${data.values['keyword'] ? ` — ${data.values['keyword']}` : data.values['topic'] ? ` — ${data.values['topic']}` : ""}`,
+        detail: requestSummary.slice(0, 400),
+        kind: skill.kind,
+        channel: skill.channel,
+        status: "review",
+        output,
+        scheduled: "بانتظار اعتمادك",
+        steps: [
+          { label: "فهم الطلب", state: "done" },
+          { label: "التنفيذ", state: "done" },
+          { label: "مراجعتك", state: "active" },
+          { label: "النشر", state: "todo" },
+        ],
+      })
+      .select("id")
+      .single();
+
+    return { output, messageId: assistantRow.id, taskId: task?.id ?? null };
   });
