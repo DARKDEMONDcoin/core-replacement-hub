@@ -61,7 +61,7 @@ export const askEmployee = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => input.parse(data))
   .handler(async ({ data, context }) => {
-    const apiKey = process.env["LOVABLE_API_KEY"];
+    const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) throw new Error("مفتاح خدمة الذكاء الاصطناعي غير مهيأ.");
 
     const supabase = context.supabase;
@@ -115,11 +115,11 @@ export const askEmployee = createServerFn({ method: "POST" })
       .reverse()
       .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.body }));
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.0-flash-exp:free",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: system },
@@ -202,7 +202,7 @@ export const runSkill = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => skillInput.parse(data))
   .handler(async ({ data, context }) => {
-    const apiKey = process.env["LOVABLE_API_KEY"];
+    const apiKey = process.env["OPENROUTER_API_KEY"];
     if (!apiKey) throw new Error("مفتاح خدمة الذكاء الاصطناعي غير مهيأ.");
 
     const persona = personas[data.employeeId];
@@ -249,11 +249,11 @@ export const runSkill = createServerFn({ method: "POST" })
       body: `▸ ${skill.title}${requestSummary ? `\n${requestSummary}` : ""}`,
     });
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.0-flash-exp:free",
         messages: [
           { role: "system", content: system },
           { role: "user", content: prompt },
