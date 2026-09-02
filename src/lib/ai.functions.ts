@@ -141,7 +141,8 @@ export const askEmployee = createServerFn({ method: "POST" })
     let deliverable: Deliverable | null = null;
 
     try {
-      const parsed = JSON.parse(raw) as { reply?: string; deliverable?: Deliverable | null };
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+      const parsed = JSON.parse(cleaned) as { reply?: string; deliverable?: Deliverable | null };
       if (parsed.reply) reply = parsed.reply;
       deliverable = parsed.deliverable ?? null;
     } catch {
